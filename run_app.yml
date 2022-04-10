@@ -1,0 +1,80 @@
+---
+- name: Ansible Playbook for installing docker and run test app
+  hosts: host1
+  tasks:
+    - name: install yum-utils package
+      become: true
+      become_user: root
+      yum:
+        state: present
+        name:
+         - yum-utils
+  
+    - name: Check if Docker is installed
+      command: systemctl status docker
+      register: docker_check
+      ignore_errors: yes
+ 
+    - name: creating a docker repository
+      become: true
+      become_user: root
+      yum_repository:
+         description: repo for docker
+         name: docker-ce
+         baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+         gpgcheck: no
+    - name: installing docker
+      become: true
+      become_user: root
+      package:
+         name: docker-ce
+         state: present
+  
+    - name: starting docker services
+      become: true
+      become_user: root
+      service:
+         name: docker
+         state: started
+  
+    - name: Enable the Docker daemon in systemd
+      become: true
+      become_user: root
+      systemd:
+        name: docker
+        enabled: yes
+        masked: no
+  
+    - name: Check if Docker Compose is installed
+      become: true
+      become_user: root
+      command: docker-compose --version
+      register: docker_compose_check
+      ignore_errors: yes
+  
+    - name: Download and install Docker Compose
+      become: true
+      become_user: root
+      get_url:
+        url: https://github.com/docker/compose/releases/download/1.26.2/docker-compose-Linux-x86_64
+        dest: /usr/bin/docker-compose
+        mode: 0755
+      when:
+        - docker_compose_check.msg is defined
+        - docker_compose_check.msg.find('No such file or directory') != -1
+
+    - name: Copying the app directory and its content
+      become: true 
+      copy:
+        src: ~/app
+        dest: /home/ansible_user/
+        owner: ansible_user
+        group: ansible_user  
+        mode: 0644
+
+    - name: deploy Docker Compose stack
+      become: true
+      become_user: root
+      shell:
+        cmd: "docker-compose -f docker-compose.yml up -d"
+        chdir: /home/ansible_user/app
